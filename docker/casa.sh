@@ -7,7 +7,7 @@ sleep 5
 clear
 echo "Fetching Aria2c..."
 sleep 3
-curl -L https://github.com/garbagescow/batocera.pro/raw/main/.dep/.scripts/aria2c.sh | bash
+curl -L https://github.com/LionCave97/batocera.pro/raw/main/.dep/.scripts/aria2c.sh | bash
 sleep 2
 clear
 
@@ -15,10 +15,10 @@ clear
 HOME_DIR=/userdata/system
 
 # Define URLs for the split zip files
-ZIP_PART_1="https://github.com/garbagescow/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.001"
-ZIP_PART_2="https://github.com/garbagescow/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.002"
-ZIP_PART_3="https://github.com/garbagescow/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.003"
-ZIP_PART_4="https://github.com/garbagescow/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.004"
+ZIP_PART_1="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.001"
+ZIP_PART_2="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.002"
+ZIP_PART_3="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.003"
+ZIP_PART_4="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos.tar.zip.004"
 
 # Change to home directory
 cd "${HOME_DIR}"
@@ -69,7 +69,7 @@ rm batocera-casaos.tar.gz
 
 # Download the executable using aria2c
 echo "Downloading the executable file..."
-./aria2c -x 5 "https://github.com/garbagescow/batocera.pro/releases/download/batocera-containers/batocera-casaos" -o "casaos/batocera-casaos"
+./aria2c -x 5 "https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos" -o "casaos/batocera-casaos"
 
 if [ $? -ne 0 ]; then
     echo "Failed to download executable. Exiting."
