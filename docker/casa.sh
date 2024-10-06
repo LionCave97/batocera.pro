@@ -7,7 +7,8 @@ sleep 5
 clear
 echo "Fetching Aria2c..."
 sleep 3
-curl -L https://github.com/LionCave97/batocera.pro/raw/main/.dep/.scripts/aria2c.sh | bash
+# Update the URL to fetch the raw content
+curl -L https://raw.githubusercontent.com/LionCave97/batocera.pro/main/.dep/.scripts/aria2c.sh | bash
 sleep 2
 clear
 
