@@ -1,6 +1,20 @@
 # batocera.pro
-<br><br><br><br>
-<b>This repo is scheduled for phase out and is not supported anymore</b><br>
+<br>
+# Credits
+
+This project is based on the original work from [batocera.pro](https://github.com/uureel/batocera.pro) by:
+
+- [@uureel](https://github.com/uureel) - Original creator and main contributor
+- [@spawnedc](https://github.com/spawnedc)
+- [@toccata10](https://github.com/toccata10)
+- [@giwty](https://github.com/giwty)
+- [@udance4ever](https://github.com/udance4ever)
+
+The original repository was licensed under the [GPL-3.0 license](https://github.com/uureel/batocera.pro/blob/main/LICENSE).
+*Note: The original repository has been phased out and is no longer supported.*
+
+## I am in the progress of working through this codebase. And will try my best to maintain it.
+<!-- 
 <br><br><br><br>
 <b><i>Unofficial Apps for Batocera x86_64 (AMD/Intel)</i></b><br>
 <br>
@@ -545,4 +559,4 @@ ALTERNATIVE INSTALL METHOD:<BR>
 shape or form affiliated with Batocera </i><br>
 <br><br><br><br>
 <b>This repo is scheduled for phase out and is not supported anymore</b><br>
-<br><br><br><br>
+<br><br><br><br> -->
