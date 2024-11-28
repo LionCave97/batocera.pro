@@ -349,14 +349,19 @@ install_casaos() {
         # Move files to final location
         echo -e "${YELLOW}Moving files to final location...${NC}"
         if [[ -d "${temp_dir}/casaos" ]]; then
-            # Move contents of nested casaos directory
-            mv "${temp_dir}/casaos"/* "${CASA_DIR}/" || {
-                echo -e "${RED}Failed to move files${NC}"
+            # First clean up existing directories
+            echo -e "${YELLOW}Cleaning up existing installation...${NC}"
+            rm -rf "${CASA_DIR}"/*
+            
+            # Now copy all contents
+            echo -e "${YELLOW}Copying new files...${NC}"
+            cp -rf "${temp_dir}/casaos"/* "${CASA_DIR}/" || {
+                echo -e "${RED}Failed to copy files${NC}"
                 rm -rf "${temp_dir}"
                 exit 1
             }
             
-            # Copy the executable files
+            # Set permissions for executable files
             if [[ -f "${CASA_DIR}/filemanagerlauncher" ]]; then
                 chmod +x "${CASA_DIR}/filemanagerlauncher"
                 echo -e "${GREEN}Set permissions for filemanagerlauncher${NC}"
@@ -367,7 +372,7 @@ install_casaos() {
                 echo -e "${GREEN}Set permissions for save.sh${NC}"
             fi
             
-            echo -e "${GREEN}Successfully moved CasaOS files${NC}"
+            echo -e "${GREEN}Successfully installed CasaOS files${NC}"
         else
             echo -e "${RED}Expected directory structure not found${NC}"
             echo -e "${YELLOW}Contents of temp directory:${NC}"
