@@ -1,174 +1,152 @@
 #!/bin/bash
-set -euo pipefail  # Exit on error, undefined vars, and pipe failures
 
-# Setup logging
-LOG_FILE="/userdata/system/casaos_install.log"
-exec 1> >(tee -a "$LOG_FILE") 2>&1
+# Set strict error handling
+set -euo pipefail
+trap 'handle_error $? $LINENO' ERR
 
-# Function for cleanup on failure
-cleanup() {
-    local exit_code=$?
-    if [ $exit_code -ne 0 ]; then
-        echo "Installation failed with error code $exit_code. Check $LOG_FILE for details."
-        # Cleanup temporary files
-        rm -f "${HOME_DIR}"/batocera-casaos.tar.zip*
-        rm -f "${HOME_DIR}"/batocera-casaos.tar.gz
-        rm -f "${HOME_DIR}"/aria2c
-    fi
-    exit $exit_code
-}
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-trap cleanup EXIT
-
-# Function to check available disk space
-check_disk_space() {
-    local required_space=2000000  # Required space in KB (approximately 2GB)
-    local available_space=$(df -k "${HOME_DIR}" | awk 'NR==2 {print $4}')
-    
-    if [ "$available_space" -lt "$required_space" ]; then
-        echo "Error: Not enough disk space. Required: 2GB, Available: $(($available_space/1024))MB"
-        exit 1
-    fi
-}
-
-# Function to verify downloads
-verify_download() {
-    local file=$1
-    if [ ! -f "$file" ] || [ ! -s "$file" ]; then
-        echo "Error: Download failed or file is empty: $file"
-        exit 1
-    fi
-}
-
-echo "Batocera.PRO CasaOS installer..."
-echo "Installation started at $(date)"
-echo "This can take a while... please wait....."
-
-# Define the home directory
+# Constants
 HOME_DIR=/userdata/system
+CASA_DIR="${HOME_DIR}/casaos"
+REQUIRED_SPACE_MB=2048 # 2GB minimum
+DOWNLOAD_TIMEOUT=300 # 5 minutes timeout for downloads
 
-# Check if CasaOS is already installed
-if [ -d "${HOME_DIR}/casaos" ]; then
-    echo "CasaOS appears to be already installed."
-    read -p "Do you want to remove the existing installation and continue? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Installation cancelled."
+# Error handler function
+handle_error() {
+    local exit_code=$1
+    local line_number=$2
+    echo -e "${RED}Error occurred in script at line ${line_number}${NC}"
+    echo -e "${RED}Exit code: ${exit_code}${NC}"
+    cleanup
+    exit 1
+}
+
+# Cleanup function
+cleanup() {
+    echo -e "${YELLOW}Performing cleanup...${NC}"
+    rm -f "${HOME_DIR}"/batocera-casaos.tar.zip*
+    rm -f "${HOME_DIR}"/batocera-casaos.tar.gz
+    rm -f "${HOME_DIR}"/aria2c
+}
+
+# Check system requirements
+check_system_requirements() {
+    echo -e "${YELLOW}Checking system requirements...${NC}"
+    
+    # Check architecture
+    if [[ "$(uname -m)" != "x86_64" ]]; then
+        echo -e "${RED}Error: This script requires x86_64 architecture${NC}"
         exit 1
+    }
+
+    # Check available disk space
+    local available_space=$(df -m "${HOME_DIR}" | awk 'NR==2 {print $4}')
+    if [[ ${available_space} -lt ${REQUIRED_SPACE_MB} ]]; then
+        echo -e "${RED}Error: Insufficient disk space. Required: ${REQUIRED_SPACE_MB}MB, Available: ${available_space}MB${NC}"
+        exit 1
+    }
+
+    # Check for required commands
+    local required_commands=("curl" "unzip" "tar" "dialog")
+    for cmd in "${required_commands[@]}"; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${RED}Error: Required command '$cmd' not found${NC}"
+            exit 1
+        fi
+    }
+}
+
+# Download function with retry mechanism
+download_with_retry() {
+    local url=$1
+    local output=$2
+    local max_retries=3
+    local retry=0
+
+    while [[ ${retry} -lt ${max_retries} ]]; do
+        if timeout ${DOWNLOAD_TIMEOUT} ./aria2c -x 10 --retry-wait=10 "${url}" -o "${output}"; then
+            return 0
+        fi
+        retry=$((retry + 1))
+        echo -e "${YELLOW}Retry ${retry}/${max_retries} for ${output}${NC}"
+        sleep 5
+    done
+    
+    echo -e "${RED}Failed to download ${output} after ${max_retries} attempts${NC}"
+    return 1
+}
+
+# Main installation function
+install_casaos() {
+    echo -e "${GREEN}Starting CasaOS installation...${NC}"
+    
+    # Create necessary directories
+    mkdir -p "${CASA_DIR}"
+    
+    # Download and setup aria2c
+    echo -e "${YELLOW}Setting up aria2c...${NC}"
+    curl -L https://raw.githubusercontent.com/LionCave97/batocera.pro/main/.dep/.scripts/aria2c.sh | bash
+    
+    # Define and download split files
+    local base_url="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
+    local files=("batocera-casaos.tar.zip.001" "batocera-casaos.tar.zip.002" 
+                "batocera-casaos.tar.zip.003" "batocera-casaos.tar.zip.004")
+    
+    for file in "${files[@]}"; do
+        echo -e "${YELLOW}Downloading ${file}...${NC}"
+        download_with_retry "${base_url}/${file}" "${file}" || exit 1
+    done
+
+    # Combine and extract files
+    echo -e "${YELLOW}Processing downloaded files...${NC}"
+    cat batocera-casaos.tar.zip.* > batocera-casaos.tar.zip
+    unzip -q batocera-casaos.tar.zip || { echo -e "${RED}Failed to unzip file${NC}"; exit 1; }
+    tar -xzf batocera-casaos.tar.gz || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
+
+    # Download and setup executable
+    echo -e "${YELLOW}Setting up CasaOS executable...${NC}"
+    download_with_retry "${base_url}/batocera-casaos" "casaos/batocera-casaos"
+    chmod +x "${CASA_DIR}/batocera-casaos"
+
+    # Configure autostart
+    echo -e "${YELLOW}Configuring autostart...${NC}"
+    if ! grep -q "casaos/batocera-casaos" "${HOME_DIR}/custom.sh" 2>/dev/null; then
+        echo "${CASA_DIR}/batocera-casaos &" >> "${HOME_DIR}/custom.sh"
     fi
-    rm -rf "${HOME_DIR}/casaos"
-fi
 
-# Check disk space
-check_disk_space
+    # Start CasaOS
+    echo -e "${GREEN}Starting CasaOS...${NC}"
+    "${CASA_DIR}/batocera-casaos" &
 
-# Define URLs with version control
-CASA_VERSION="latest"
-BASE_URL="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
-ZIP_PARTS=(
-    "${BASE_URL}/batocera-casaos.tar.zip.001"
-    "${BASE_URL}/batocera-casaos.tar.zip.002"
-    "${BASE_URL}/batocera-casaos.tar.zip.003"
-    "${BASE_URL}/batocera-casaos.tar.zip.004"
-)
+    # Display completion message
+    local msg="CasaOS container has been set up.\n\n"
+    msg+="Access casa Web UI at http://<your-batocera-ip>:80\n\n"
+    msg+="RDP Debian XFCE Desktop port 3389\n"
+    msg+="Username: root\n"
+    msg+="Password: linux\n\n"
+    msg+="CasaOS data stored in: ${CASA_DIR}\n\n"
+    msg+="Default web UI credentials:\n"
+    msg+="Username: batocera\n"
+    msg+="Password: batoceralinux"
+    
+    dialog --title "CasaOS Setup Complete" --msgbox "${msg}" 22 70
 
-# Download and verify each part
-for part in "${ZIP_PARTS[@]}"; do
-    filename=$(basename "$part")
-    echo "Downloading $filename..."
-    ./aria2c -x 10 --retry-wait=10 --max-tries=5 "$part" -o "$filename"
-    verify_download "$filename"
-done
+    echo -e "${GREEN}Installation completed successfully!${NC}"
+    echo -e "${YELLOW}Management commands:${NC}"
+    echo "1) To stop the container: podman stop casaos"
+    echo "2) To enter zsh session: podman exec -it casaos zsh"
+}
 
-# Combine the zip files
-echo "Combining split zip files..."
-cat batocera-casaos.tar.zip.* > batocera-casaos.tar.zip
-if [ $? -ne 0 ]; then
-    echo "Failed to combine the split zip files. Exiting."
-    exit 1
-fi
+# Main execution
+main() {
+    check_system_requirements
+    install_casaos
+    cleanup
+}
 
-# Unzip the combined zip file
-echo "Unzipping combined zip file..."
-unzip -q "batocera-casaos.tar.zip"
-if [ $? -ne 0 ]; then
-    echo "Failed to unzip the file. Exiting."
-    exit 1
-fi
-
-# Extract the tar.gz file
-echo "Extracting the tar.gz file..."
-tar -xzvf "batocera-casaos.tar.gz"
-if [ $? -ne 0 ]; then
-    echo "Failed to extract the tar.gz file. Exiting."
-    exit 1
-fi
-
-# Clean up zip and tar files
-rm batocera-casaos.tar.zip*
-rm batocera-casaos.tar.gz
-
-# Download the executable using aria2c
-echo "Downloading the executable file..."
-./aria2c -x 5 "https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers/batocera-casaos" -o "casaos/batocera-casaos"
-
-if [ $? -ne 0 ]; then
-    echo "Failed to download executable. Exiting."
-    exit 1
-fi
-
-# Make the executable runnable
-chmod +x "/userdata/system/casaos/batocera-casaos"
-if [ $? -ne 0 ]; then
-    echo "Failed to make the file executable. Exiting."
-    exit 1
-fi
-
-# Backup existing custom.sh
-if [ -f ~/custom.sh ]; then
-    cp ~/custom.sh ~/custom.sh.backup
-fi
-
-# Add casa to custom.sh for autostart (prevent duplicate entries)
-if ! grep -q "casaos/batocera-casaos" ~/custom.sh 2>/dev/null; then
-    echo "/userdata/system/casaos/batocera-casaos &" >> ~/custom.sh
-fi
-
-# Verify installation
-if [ ! -x "${HOME_DIR}/casaos/batocera-casaos" ]; then
-    echo "Error: Installation verification failed. Executable not found or not executable."
-    exit 1
-fi
-
-# Run the executable in background
-echo "Running CasaOS in background..."
-"${HOME_DIR}/casaos/batocera-casaos" &
-
-# Wait for service to start
-echo "Waiting for CasaOS to start..."
-for i in {1..30}; do
-    if curl -s http://localhost:80 >/dev/null; then
-        echo "CasaOS is running!"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "Warning: CasaOS may not have started properly. Please check manually."
-    fi
-    sleep 1
-done
-
-# Cleanup
-rm -f aria2c
-
-# Final status message
-echo "Installation completed at $(date)"
-echo "Log file available at: $LOG_FILE"
-
-# Final dialog message with casaos management info
-MSG="Casaos container has been set up.\n\nAccess casa Web UI at http://<your-batocera-ip>:80 \n\nRDP Debian XFCE Desktop port 3389 username/password is root/linux\n\nCasaos data stored in: ~/casaos\n\nDefault web ui username/password is batocera/batoceralinux"
-dialog --title "Casaos Setup Complete" --msgbox "$MSG" 20 70
-
-echo "Process completed successfully."
-
-echo "1) to stop the container, run:  podman stop casaos"
-echo "2) to enter zsh session, run:  podman exec -it casaos zsh"
+main
