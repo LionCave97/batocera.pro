@@ -61,7 +61,7 @@ check_system_requirements() {
     done
 }
 
-# Download function with retry mechanism
+# Download function with optimized aria2c settings
 download_with_retry() {
     local url=$1
     local output=$2
@@ -69,12 +69,23 @@ download_with_retry() {
     local retry=0
 
     while [[ ${retry} -lt ${max_retries} ]]; do
-        if timeout ${DOWNLOAD_TIMEOUT} ./aria2c -x 10 --retry-wait=10 "${url}" -o "${output}"; then
+        if timeout ${DOWNLOAD_TIMEOUT} ./aria2c \
+            -x 16 \                          # Increase max connections per server
+            -s 16 \                          # Increase concurrent downloads
+            -k 1M \                          # Piece selection size
+            --min-split-size=1M \            # Min split size
+            --max-connection-per-server=16 \ # Max connections per server
+            --optimize-concurrent-downloads \
+            --file-allocation=none \         # Disable file pre-allocation
+            --retry-wait=3 \                 # Reduce retry wait time
+            --auto-file-renaming=false \
+            --allow-overwrite=true \
+            "${url}" -o "${output}"; then
             return 0
         fi
         retry=$((retry + 1))
         echo -e "${YELLOW}Retry ${retry}/${max_retries} for ${output}${NC}"
-        sleep 5
+        sleep 2
     done
     
     echo -e "${RED}Failed to download ${output} after ${max_retries} attempts${NC}"
