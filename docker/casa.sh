@@ -94,14 +94,28 @@ setup_aria2c() {
     export ARIA2C_PATH="$aria2c_path"
 }
 
-# Download function with optimized aria2c settings
+# Download function with resume capability and better error handling
 download_with_retry() {
     local url=$1
     local output=$2
     local max_retries=3
     local retry=0
-
+    local continue_file="${output}.aria2"  # aria2 control file
+    
     while [[ ${retry} -lt ${max_retries} ]]; do
+        echo -e "${YELLOW}Download attempt $((retry + 1)) for ${output}${NC}"
+        
+        # Get fresh download URL (GitHub releases expire)
+        local fresh_url=$(curl -sI "$url" | grep -i "location:" | cut -d' ' -f2 | tr -d '\r\n')
+        if [[ -z "$fresh_url" ]]; then
+            fresh_url="$url"  # Fallback to original URL if redirect not found
+        fi
+
+        # Check if partial download exists and is valid
+        if [[ -f "$continue_file" ]]; then
+            echo -e "${YELLOW}Resuming previous download...${NC}"
+        fi
+
         if timeout ${DOWNLOAD_TIMEOUT} "${ARIA2C_PATH}" \
             -x16 -s16 -k1M \
             --min-split-size=1M \
@@ -111,17 +125,49 @@ download_with_retry() {
             --retry-wait=3 \
             --auto-file-renaming=false \
             --allow-overwrite=true \
-            "${url}" \
+            --continue=true \
+            --max-tries=0 \
+            --connect-timeout=10 \
+            --timeout=10 \
+            "${fresh_url}" \
             -o "${output}"; then
-            return 0
+            
+            # Verify download completed successfully
+            if [[ -f "${output}" ]]; then
+                echo -e "${GREEN}Successfully downloaded ${output}${NC}"
+                return 0
+            fi
         fi
+
         retry=$((retry + 1))
-        echo -e "${YELLOW}Retry ${retry}/${max_retries} for ${output}${NC}"
-        sleep 2
+        if [[ ${retry} -lt ${max_retries} ]]; then
+            echo -e "${YELLOW}Download failed, waiting 5 seconds before retry ${retry}/${max_retries}${NC}"
+            sleep 5
+        fi
     done
     
     echo -e "${RED}Failed to download ${output} after ${max_retries} attempts${NC}"
     return 1
+}
+
+# Function to download all split files
+download_split_files() {
+    local base_url="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
+    local files=(
+        "batocera-casaos.tar.zip.001"
+        "batocera-casaos.tar.zip.002"
+        "batocera-casaos.tar.zip.003"
+        "batocera-casaos.tar.zip.004"
+    )
+
+    for file in "${files[@]}"; do
+        echo -e "${YELLOW}Downloading ${file}...${NC}"
+        if ! download_with_retry "${base_url}/${file}" "${file}"; then
+            echo -e "${RED}Failed to download ${file}. Aborting.${NC}"
+            return 1
+        fi
+    done
+    return 0
 }
 
 # Main installation function
@@ -134,15 +180,12 @@ install_casaos() {
     # Create necessary directories
     mkdir -p "${CASA_DIR}"
     
-    # Define and download split files
-    local base_url="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
-    local files=("batocera-casaos.tar.zip.001" "batocera-casaos.tar.zip.002" 
-                "batocera-casaos.tar.zip.003" "batocera-casaos.tar.zip.004")
-    
-    for file in "${files[@]}"; do
-        echo -e "${YELLOW}Downloading ${file}...${NC}"
-        download_with_retry "${base_url}/${file}" "${file}" || exit 1
-    done
+    # Download all split files
+    cd "${HOME_DIR}"
+    if ! download_split_files; then
+        echo -e "${RED}Download failed. Exiting.${NC}"
+        exit 1
+    fi
 
     # Combine and extract files
     echo -e "${YELLOW}Processing downloaded files...${NC}"
