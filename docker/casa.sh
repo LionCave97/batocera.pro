@@ -61,7 +61,40 @@ check_system_requirements() {
     done
 }
 
-# Download function with optimized aria2c settings
+# Function to check and setup aria2c
+setup_aria2c() {
+    local aria2c_path=""
+    
+    # First check if aria2c exists in PATH
+    if command -v aria2c >/dev/null 2>&1; then
+        echo -e "${GREEN}Found system aria2c installation${NC}"
+        aria2c_path="aria2c"
+    # Then check if it exists in common Batocera locations
+    elif [ -f "/userdata/system/pro/.dep/aria2c" ]; then
+        echo -e "${GREEN}Found existing aria2c in pro/.dep${NC}"
+        aria2c_path="/userdata/system/pro/.dep/aria2c"
+        chmod +x "$aria2c_path"
+    else
+        echo -e "${YELLOW}Downloading aria2c...${NC}"
+        # Create .dep directory if it doesn't exist
+        mkdir -p "/userdata/system/pro/.dep"
+        
+        # Download aria2c
+        if curl -L "https://github.com/uureel/batocera.pro/raw/main/.dep/aria2c" -o "/userdata/system/pro/.dep/aria2c"; then
+            chmod +x "/userdata/system/pro/.dep/aria2c"
+            aria2c_path="/userdata/system/pro/.dep/aria2c"
+            echo -e "${GREEN}Successfully installed aria2c${NC}"
+        else
+            echo -e "${RED}Failed to download aria2c${NC}"
+            exit 1
+        fi
+    fi
+    
+    # Export the aria2c path for use in other functions
+    export ARIA2C_PATH="$aria2c_path"
+}
+
+# Modify the download_with_retry function to use ARIA2C_PATH
 download_with_retry() {
     local url=$1
     local output=$2
@@ -69,15 +102,15 @@ download_with_retry() {
     local retry=0
 
     while [[ ${retry} -lt ${max_retries} ]]; do
-        if timeout ${DOWNLOAD_TIMEOUT} ./aria2c \
-            -x 16 \                          # Increase max connections per server
-            -s 16 \                          # Increase concurrent downloads
-            -k 1M \                          # Piece selection size
-            --min-split-size=1M \            # Min split size
-            --max-connection-per-server=16 \ # Max connections per server
+        if timeout ${DOWNLOAD_TIMEOUT} "${ARIA2C_PATH}" \
+            -x 16 \
+            -s 16 \
+            -k 1M \
+            --min-split-size=1M \
+            --max-connection-per-server=16 \
             --optimize-concurrent-downloads \
-            --file-allocation=none \         # Disable file pre-allocation
-            --retry-wait=3 \                 # Reduce retry wait time
+            --file-allocation=none \
+            --retry-wait=3 \
             --auto-file-renaming=false \
             --allow-overwrite=true \
             "${url}" -o "${output}"; then
@@ -96,12 +129,11 @@ download_with_retry() {
 install_casaos() {
     echo -e "${GREEN}Starting CasaOS installation...${NC}"
     
+    # Setup aria2c first
+    setup_aria2c
+    
     # Create necessary directories
     mkdir -p "${CASA_DIR}"
-    
-    # Download and setup aria2c
-    echo -e "${YELLOW}Setting up aria2c...${NC}"
-    curl -L https://raw.githubusercontent.com/LionCave97/batocera.pro/main/.dep/.scripts/aria2c.sh | bash
     
     # Define and download split files
     local base_url="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
