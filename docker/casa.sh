@@ -15,6 +15,7 @@ HOME_DIR=/userdata/system
 CASA_DIR="${HOME_DIR}/casaos"
 REQUIRED_SPACE_MB=2048 # 2GB minimum
 DOWNLOAD_TIMEOUT=300 # 5 minutes timeout for downloads
+GITHUB_BASE_URL="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
 
 # Error handler function
 handle_error() {
@@ -150,9 +151,22 @@ download_with_retry() {
     return 1
 }
 
-# Function to download all split files
+# Add this function to check if files are already downloaded and extracted
+check_existing_files() {
+    local file=$1
+    local size_threshold=1000000  # 1MB minimum size
+
+    if [[ -f "$file" ]]; then
+        local file_size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null)
+        if [[ $file_size -gt $size_threshold ]]; then
+            return 0  # File exists and is large enough
+        fi
+    fi
+    return 1  # File doesn't exist or is too small
+}
+
+# Update the download_split_files function
 download_split_files() {
-    local base_url="https://github.com/LionCave97/batocera.pro/releases/download/batocera-containers"
     local files=(
         "batocera-casaos.tar.zip.001"
         "batocera-casaos.tar.zip.002"
@@ -161,13 +175,106 @@ download_split_files() {
     )
 
     for file in "${files[@]}"; do
+        if check_existing_files "${file}"; then
+            echo -e "${GREEN}${file} already exists, skipping download...${NC}"
+            continue
+        fi
         echo -e "${YELLOW}Downloading ${file}...${NC}"
-        if ! download_with_retry "${base_url}/${file}" "${file}"; then
+        if ! download_with_retry "${GITHUB_BASE_URL}/${file}" "${file}"; then
             echo -e "${RED}Failed to download ${file}. Aborting.${NC}"
             return 1
         fi
     done
     return 0
+}
+
+# Function to check installation state
+check_installation_state() {
+    local has_split_files=false
+    local has_combined_zip=false
+    local has_executable=false
+    local installation_complete=false
+
+    # Check split files
+    if [[ -f "batocera-casaos.tar.zip.001" ]] && \
+       [[ -f "batocera-casaos.tar.zip.002" ]] && \
+       [[ -f "batocera-casaos.tar.zip.003" ]] && \
+       [[ -f "batocera-casaos.tar.zip.004" ]]; then
+        has_split_files=true
+    fi
+
+    # Check combined zip and executable
+    [[ -f "batocera-casaos.tar.zip" ]] && has_combined_zip=true
+    [[ -x "${CASA_DIR}/batocera-casaos" ]] && has_executable=true
+
+    # If executable exists, consider it a complete installation
+    $has_executable && installation_complete=true
+
+    # If any files exist but installation isn't complete, it's partial
+    if $has_split_files || $has_combined_zip || [[ -d "${CASA_DIR}" ]]; then
+        if ! $installation_complete; then
+            echo -e "${YELLOW}Partial installation detected!${NC}"
+            echo -e "Found:"
+            $has_split_files && echo -e "- Split archive files"
+            $has_combined_zip && echo -e "- Combined archive"
+            [[ -d "${CASA_DIR}" ]] && echo -e "- CasaOS directory"
+            
+            while true; do
+                echo -e "${YELLOW}Would you like to:${NC}"
+                echo "1) Continue from where it left off"
+                echo "2) Start fresh (delete existing files and reinstall)"
+                echo "3) Exit"
+                read -p "Please choose (1-3): " choice
+                
+                case $choice in
+                    1)
+                        echo -e "${GREEN}Continuing existing installation...${NC}"
+                        return 0
+                        ;;
+                    2)
+                        echo -e "${YELLOW}Cleaning up existing files...${NC}"
+                        cleanup_installation
+                        return 0
+                        ;;
+                    3)
+                        echo -e "${YELLOW}Exiting installation...${NC}"
+                        exit 0
+                        ;;
+                    *)
+                        echo -e "${RED}Invalid choice. Please select 1, 2, or 3${NC}"
+                        ;;
+                esac
+            done
+        else
+            echo -e "${GREEN}Complete installation detected!${NC}"
+            while true; do
+                read -p "Would you like to reinstall? (y/n): " choice
+                case $choice in
+                    [Yy]*)
+                        echo -e "${YELLOW}Cleaning up existing installation...${NC}"
+                        cleanup_installation
+                        return 0
+                        ;;
+                    [Nn]*)
+                        echo -e "${GREEN}Exiting...${NC}"
+                        exit 0
+                        ;;
+                    *)
+                        echo -e "${RED}Please answer y or n${NC}"
+                        ;;
+                esac
+            done
+        fi
+    fi
+}
+
+# Function to cleanup existing installation
+cleanup_installation() {
+    echo -e "${YELLOW}Removing existing files...${NC}"
+    rm -f batocera-casaos.tar.zip*
+    rm -f batocera-casaos.tar.gz
+    rm -rf "${CASA_DIR}"
+    echo -e "${GREEN}Cleanup complete${NC}"
 }
 
 # Main installation function
@@ -177,26 +284,45 @@ install_casaos() {
     # Setup aria2c first
     setup_aria2c
     
+    # Check installation state before proceeding
+    check_installation_state
+    
     # Create necessary directories
     mkdir -p "${CASA_DIR}"
     
-    # Download all split files
     cd "${HOME_DIR}"
-    if ! download_split_files; then
-        echo -e "${RED}Download failed. Exiting.${NC}"
-        exit 1
+
+    # Check if CasaOS is already extracted
+    if [[ -f "${CASA_DIR}/batocera-casaos" ]]; then
+        echo -e "${GREEN}CasaOS files already extracted${NC}"
+    else
+        # Download split files if needed
+        if ! download_split_files; then
+            echo -e "${RED}Download failed. Exiting.${NC}"
+            exit 1
+        fi
+
+        # Process the downloaded files
+        echo -e "${YELLOW}Processing downloaded files...${NC}"
+        if [[ ! -f "batocera-casaos.tar.zip" ]]; then
+            cat batocera-casaos.tar.zip.* > batocera-casaos.tar.zip
+        fi
+        
+        if [[ ! -f "batocera-casaos.tar.gz" ]]; then
+            unzip -q "batocera-casaos.tar.zip" || { echo -e "${RED}Failed to unzip file${NC}"; exit 1; }
+        fi
+        
+        tar -xzf "batocera-casaos.tar.gz" || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
     fi
 
-    # Combine and extract files
-    echo -e "${YELLOW}Processing downloaded files...${NC}"
-    cat batocera-casaos.tar.zip.* > batocera-casaos.tar.zip
-    unzip -q batocera-casaos.tar.zip || { echo -e "${RED}Failed to unzip file${NC}"; exit 1; }
-    tar -xzf batocera-casaos.tar.gz || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
-
-    # Download and setup executable
-    echo -e "${YELLOW}Setting up CasaOS executable...${NC}"
-    download_with_retry "${base_url}/batocera-casaos" "casaos/batocera-casaos"
-    chmod +x "${CASA_DIR}/batocera-casaos"
+    # Check and setup executable
+    if [[ ! -x "${CASA_DIR}/batocera-casaos" ]]; then
+        echo -e "${YELLOW}Setting up CasaOS executable...${NC}"
+        download_with_retry "${GITHUB_BASE_URL}/batocera-casaos" "casaos/batocera-casaos"
+        chmod +x "${CASA_DIR}/batocera-casaos"
+    else
+        echo -e "${GREEN}CasaOS executable already set up${NC}"
+    fi
 
     # Configure autostart
     echo -e "${YELLOW}Configuring autostart...${NC}"
