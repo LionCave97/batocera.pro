@@ -188,24 +188,32 @@ download_split_files() {
     return 0
 }
 
-# Function to get user choice
+# Function to get user choice using dialog
 get_user_choice() {
-    local prompt=$1
-    local options=$2
+    local title=$1
+    local text=$2
+    local options=$3
     
-    while true; do
-        echo -e "${YELLOW}$prompt${NC}"
-        # Display numbered options
-        echo "$options"
-        
-        # Use read with a timeout to prevent hanging
-        if read -t 300 choice </dev/tty; then
-            echo "$choice"
-            return 0
-        else
-            echo -e "${RED}No input received, please try again${NC}"
-        fi
-    done
+    # Create temporary file for dialog output
+    local temp_file=$(mktemp)
+    
+    # Display dialog and capture choice
+    dialog --clear --title "$title" \
+           --menu "$text" 15 60 3 \
+           $options \
+           2>"$temp_file"
+    
+    local status=$?
+    local choice=$(cat "$temp_file")
+    rm -f "$temp_file"
+    
+    # Check if user pressed cancel or escape
+    if [ $status -ne 0 ]; then
+        echo "3"  # Return exit option
+        return
+    fi
+    
+    echo "$choice"
 }
 
 # Update the check_installation_state function
@@ -233,58 +241,45 @@ check_installation_state() {
     # If any files exist but installation isn't complete, it's partial
     if $has_split_files || $has_combined_zip || [[ -d "${CASA_DIR}" ]]; then
         if ! $installation_complete; then
-            echo -e "${YELLOW}Partial installation detected!${NC}"
-            echo -e "Found:"
-            $has_split_files && echo -e "- Split archive files"
-            $has_combined_zip && echo -e "- Combined archive"
-            [[ -d "${CASA_DIR}" ]] && echo -e "- CasaOS directory"
+            # Build status message
+            local status_msg="Found:\n"
+            $has_split_files && status_msg+="- Split archive files\n"
+            $has_combined_zip && status_msg+="- Combined archive\n"
+            [[ -d "${CASA_DIR}" ]] && status_msg+="- CasaOS directory\n"
             
-            while true; do
-                local options="1) Continue from where it left off\n2) Start fresh (delete existing files and reinstall)\n3) Exit"
-                choice=$(get_user_choice "Please choose (1-3):" "$options")
-                
-                case $choice in
-                    1)
-                        echo -e "${GREEN}Continuing existing installation...${NC}"
-                        return 0
-                        ;;
-                    2)
-                        echo -e "${YELLOW}Cleaning up existing files...${NC}"
-                        cleanup_installation
-                        return 0
-                        ;;
-                    3)
-                        echo -e "${YELLOW}Exiting installation...${NC}"
-                        exit 0
-                        ;;
-                    *)
-                        echo -e "${RED}Invalid choice. Please select 1, 2, or 3${NC}"
-                        continue
-                        ;;
-                esac
-            done
+            # Get user choice using dialog
+            local choice=$(get_user_choice "Partial Installation Detected" \
+                "$status_msg\nWhat would you like to do?" \
+                "1 'Continue from where it left off' \
+                 2 'Start fresh (delete and reinstall)' \
+                 3 'Exit'")
+            
+            case $choice in
+                1)
+                    echo -e "${GREEN}Continuing existing installation...${NC}"
+                    return 0
+                    ;;
+                2)
+                    echo -e "${YELLOW}Cleaning up existing files...${NC}"
+                    cleanup_installation
+                    return 0
+                    ;;
+                3|"")
+                    echo -e "${YELLOW}Exiting installation...${NC}"
+                    exit 0
+                    ;;
+            esac
         else
-            echo -e "${GREEN}Complete installation detected!${NC}"
-            while true; do
-                local options="y) Yes - Reinstall\nn) No - Exit"
-                choice=$(get_user_choice "Would you like to reinstall? (y/n):" "$options")
-                
-                case $choice in
-                    [Yy]*)
-                        echo -e "${YELLOW}Cleaning up existing installation...${NC}"
-                        cleanup_installation
-                        return 0
-                        ;;
-                    [Nn]*)
-                        echo -e "${GREEN}Exiting...${NC}"
-                        exit 0
-                        ;;
-                    *)
-                        echo -e "${RED}Please answer y or n${NC}"
-                        continue
-                        ;;
-                esac
-            done
+            # Complete installation detected
+            if dialog --title "Complete Installation Detected" \
+                     --yesno "Would you like to reinstall?" 7 60; then
+                echo -e "${YELLOW}Cleaning up existing installation...${NC}"
+                cleanup_installation
+                return 0
+            else
+                echo -e "${GREEN}Exiting...${NC}"
+                exit 0
+            fi
         fi
     fi
 }
