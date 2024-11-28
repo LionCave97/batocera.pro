@@ -42,14 +42,14 @@ check_system_requirements() {
     if [[ "$(uname -m)" != "x86_64" ]]; then
         echo -e "${RED}Error: This script requires x86_64 architecture${NC}"
         exit 1
-    }
+    fi
 
     # Check available disk space
     local available_space=$(df -m "${HOME_DIR}" | awk 'NR==2 {print $4}')
     if [[ ${available_space} -lt ${REQUIRED_SPACE_MB} ]]; then
         echo -e "${RED}Error: Insufficient disk space. Required: ${REQUIRED_SPACE_MB}MB, Available: ${available_space}MB${NC}"
         exit 1
-    }
+    fi
 
     # Check for required commands
     local required_commands=("curl" "unzip" "tar" "dialog")
@@ -58,7 +58,7 @@ check_system_requirements() {
             echo -e "${RED}Error: Required command '$cmd' not found${NC}"
             exit 1
         fi
-    }
+    done
 }
 
 # Download function with retry mechanism
