@@ -348,15 +348,28 @@ install_casaos() {
         
         # Move files to final location
         echo -e "${YELLOW}Moving files to final location...${NC}"
-        if [[ -f "${temp_dir}/batocera-casaos" ]]; then
-            mv "${temp_dir}/batocera-casaos" "${CASA_DIR}/" || {
-                echo -e "${RED}Failed to move executable${NC}"
+        if [[ -d "${temp_dir}/casaos" ]]; then
+            # Move contents of nested casaos directory
+            mv "${temp_dir}/casaos"/* "${CASA_DIR}/" || {
+                echo -e "${RED}Failed to move files${NC}"
                 rm -rf "${temp_dir}"
                 exit 1
             }
-            chmod +x "${CASA_DIR}/batocera-casaos"
+            
+            # Copy the executable files
+            if [[ -f "${CASA_DIR}/filemanagerlauncher" ]]; then
+                chmod +x "${CASA_DIR}/filemanagerlauncher"
+                echo -e "${GREEN}Set permissions for filemanagerlauncher${NC}"
+            fi
+            
+            if [[ -f "${CASA_DIR}/save.sh" ]]; then
+                chmod +x "${CASA_DIR}/save.sh"
+                echo -e "${GREEN}Set permissions for save.sh${NC}"
+            fi
+            
+            echo -e "${GREEN}Successfully moved CasaOS files${NC}"
         else
-            echo -e "${RED}Executable not found in extracted files${NC}"
+            echo -e "${RED}Expected directory structure not found${NC}"
             echo -e "${YELLOW}Contents of temp directory:${NC}"
             ls -la "${temp_dir}"
             rm -rf "${temp_dir}"
