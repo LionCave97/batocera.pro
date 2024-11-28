@@ -321,18 +321,50 @@ install_casaos() {
         # Process the downloaded files
         echo -e "${YELLOW}Processing downloaded files...${NC}"
         if [[ ! -f "batocera-casaos.tar.zip" ]]; then
+            echo -e "${YELLOW}Combining split files...${NC}"
             cat batocera-casaos.tar.zip.* > batocera-casaos.tar.zip
         fi
         
         if [[ ! -f "batocera-casaos.tar.gz" ]]; then
+            echo -e "${YELLOW}Unzipping archive...${NC}"
             unzip -q "batocera-casaos.tar.zip" || { echo -e "${RED}Failed to unzip file${NC}"; exit 1; }
         fi
         
         echo -e "${YELLOW}Extracting CasaOS files...${NC}"
-        tar -xzf "batocera-casaos.tar.gz" -C "${CASA_DIR}" || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
+        # First check if the tar file contains what we expect
+        tar -tvzf "batocera-casaos.tar.gz" || { echo -e "${RED}Invalid tar file${NC}"; exit 1; }
         
-        # Set executable permissions
-        chmod +x "${CASA_DIR}/batocera-casaos"
+        # Create a temporary directory for extraction
+        local temp_dir="${HOME_DIR}/casaos_temp"
+        mkdir -p "${temp_dir}"
+        
+        # Extract to temporary directory first
+        echo -e "${YELLOW}Extracting to temporary directory...${NC}"
+        tar -xzf "batocera-casaos.tar.gz" -C "${temp_dir}" || { 
+            echo -e "${RED}Failed to extract tar file${NC}"
+            rm -rf "${temp_dir}"
+            exit 1
+        }
+        
+        # Move files to final location
+        echo -e "${YELLOW}Moving files to final location...${NC}"
+        if [[ -f "${temp_dir}/batocera-casaos" ]]; then
+            mv "${temp_dir}/batocera-casaos" "${CASA_DIR}/" || {
+                echo -e "${RED}Failed to move executable${NC}"
+                rm -rf "${temp_dir}"
+                exit 1
+            }
+            chmod +x "${CASA_DIR}/batocera-casaos"
+        else
+            echo -e "${RED}Executable not found in extracted files${NC}"
+            echo -e "${YELLOW}Contents of temp directory:${NC}"
+            ls -la "${temp_dir}"
+            rm -rf "${temp_dir}"
+            exit 1
+        fi
+        
+        # Cleanup temporary directory
+        rm -rf "${temp_dir}"
     fi
 
     # Configure autostart
