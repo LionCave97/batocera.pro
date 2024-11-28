@@ -328,16 +328,11 @@ install_casaos() {
             unzip -q "batocera-casaos.tar.zip" || { echo -e "${RED}Failed to unzip file${NC}"; exit 1; }
         fi
         
-        tar -xzf "batocera-casaos.tar.gz" || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
-    fi
-
-    # Check and setup executable
-    if [[ ! -x "${CASA_DIR}/batocera-casaos" ]]; then
-        echo -e "${YELLOW}Setting up CasaOS executable...${NC}"
-        download_with_retry "${GITHUB_BASE_URL}/batocera-casaos" "casaos/batocera-casaos"
+        echo -e "${YELLOW}Extracting CasaOS files...${NC}"
+        tar -xzf "batocera-casaos.tar.gz" -C "${CASA_DIR}" || { echo -e "${RED}Failed to extract tar file${NC}"; exit 1; }
+        
+        # Set executable permissions
         chmod +x "${CASA_DIR}/batocera-casaos"
-    else
-        echo -e "${GREEN}CasaOS executable already set up${NC}"
     fi
 
     # Configure autostart
