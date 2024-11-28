@@ -94,7 +94,7 @@ setup_aria2c() {
     export ARIA2C_PATH="$aria2c_path"
 }
 
-# Modify the download_with_retry function to use ARIA2C_PATH
+# Download function with optimized aria2c settings
 download_with_retry() {
     local url=$1
     local output=$2
@@ -103,17 +103,16 @@ download_with_retry() {
 
     while [[ ${retry} -lt ${max_retries} ]]; do
         if timeout ${DOWNLOAD_TIMEOUT} "${ARIA2C_PATH}" \
-            -x 16 \
-            -s 16 \
-            -k 1M \
+            -x16 -s16 -k1M \
             --min-split-size=1M \
             --max-connection-per-server=16 \
-            --optimize-concurrent-downloads \
+            --optimize-concurrent-downloads=true \
             --file-allocation=none \
             --retry-wait=3 \
             --auto-file-renaming=false \
             --allow-overwrite=true \
-            "${url}" -o "${output}"; then
+            "${url}" \
+            -o "${output}"; then
             return 0
         fi
         retry=$((retry + 1))
