@@ -188,7 +188,27 @@ download_split_files() {
     return 0
 }
 
-# Function to check installation state
+# Function to get user choice
+get_user_choice() {
+    local prompt=$1
+    local options=$2
+    
+    while true; do
+        echo -e "${YELLOW}$prompt${NC}"
+        # Display numbered options
+        echo "$options"
+        
+        # Use read with a timeout to prevent hanging
+        if read -t 300 choice </dev/tty; then
+            echo "$choice"
+            return 0
+        else
+            echo -e "${RED}No input received, please try again${NC}"
+        fi
+    done
+}
+
+# Update the check_installation_state function
 check_installation_state() {
     local has_split_files=false
     local has_combined_zip=false
@@ -220,11 +240,8 @@ check_installation_state() {
             [[ -d "${CASA_DIR}" ]] && echo -e "- CasaOS directory"
             
             while true; do
-                echo -e "${YELLOW}Would you like to:${NC}"
-                echo "1) Continue from where it left off"
-                echo "2) Start fresh (delete existing files and reinstall)"
-                echo "3) Exit"
-                read -p "Please choose (1-3): " choice
+                local options="1) Continue from where it left off\n2) Start fresh (delete existing files and reinstall)\n3) Exit"
+                choice=$(get_user_choice "Please choose (1-3):" "$options")
                 
                 case $choice in
                     1)
@@ -242,13 +259,16 @@ check_installation_state() {
                         ;;
                     *)
                         echo -e "${RED}Invalid choice. Please select 1, 2, or 3${NC}"
+                        continue
                         ;;
                 esac
             done
         else
             echo -e "${GREEN}Complete installation detected!${NC}"
             while true; do
-                read -p "Would you like to reinstall? (y/n): " choice
+                local options="y) Yes - Reinstall\nn) No - Exit"
+                choice=$(get_user_choice "Would you like to reinstall? (y/n):" "$options")
+                
                 case $choice in
                     [Yy]*)
                         echo -e "${YELLOW}Cleaning up existing installation...${NC}"
@@ -261,6 +281,7 @@ check_installation_state() {
                         ;;
                     *)
                         echo -e "${RED}Please answer y or n${NC}"
+                        continue
                         ;;
                 esac
             done
